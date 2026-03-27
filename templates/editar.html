@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mulher Essencial Premium</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="container">
+        <header class="topo">
+            <h1>🌺 Mulher Essencial</h1>
+            <p>Seu app premium de organização, autocuidado e bem-estar</p>
+        </header>
+
+        <nav class="menu">
+            <a href="{{ url_for('painel', secao='dashboard') }}" class="{% if secao == 'dashboard' %}ativo{% endif %}">🏠 Dashboard</a>
+            <a href="{{ url_for('painel', secao='compras') }}" class="{% if secao == 'compras' %}ativo{% endif %}">🛒 Compras</a>
+            <a href="{{ url_for('painel', secao='agenda') }}" class="{% if secao == 'agenda' %}ativo{% endif %}">📅 Agenda</a>
+            <a href="{{ url_for('painel', secao='ciclo') }}" class="{% if secao == 'ciclo' %}ativo{% endif %}">🌷 Ciclo</a>
+        </nav>
+
+        {% if secao == 'dashboard' %}
+        <section class="grid-resumo">
+            <div class="resumo-card">
+                <h3>🛒 Compras</h3>
+                <p>{{ total_compras }}</p>
+            </div>
+            <div class="resumo-card">
+                <h3>✅ Concluídas</h3>
+                <p>{{ compras_concluidas }}</p>
+            </div>
+            <div class="resumo-card">
+                <h3>📅 Agenda</h3>
+                <p>{{ total_agenda }}</p>
+            </div>
+            <div class="resumo-card">
+                <h3>🌷 Ciclos</h3>
+                <p>{{ total_ciclos }}</p>
+            </div>
+        </section>
+
+        {% if ultimo_ciclo %}
+        <section class="card destaque">
+            <h2>💖 Última previsão do ciclo</h2>
+            <p><strong>Próxima menstruação:</strong> {{ ultimo_ciclo["proxima_menstruacao"] }}</p>
+            <p><strong>Período fértil:</strong> {{ ultimo_ciclo["periodo_fertil_inicio"] }} até {{ ultimo_ciclo["periodo_fertil_fim"] }}</p>
+            <p><strong>Observações:</strong> {{ ultimo_ciclo["observacoes"] if ultimo_ciclo["observacoes"] else "Sem observações" }}</p>
+        </section>
+        {% endif %}
+        {% endif %}
+
+        {% if secao == 'compras' %}
+        <section class="card">
+            <h2>🛒 Lista de Compras</h2>
+
+            <form action="{{ url_for('adicionar_compra') }}" method="POST">
+                <label>Item</label>
+                <input type="text" name="item" placeholder="Ex: Arroz" required>
+
+                <label>Quantidade</label>
+                <input type="text" name="quantidade" placeholder="Ex: 2 pacotes" required>
+
+                <label>Categoria</label>
+                <input type="text" name="categoria" placeholder="Ex: Mercado, Farmácia, Higiene" required>
+
+                <label>Observações</label>
+                <textarea name="observacoes" rows="3" placeholder="Ex: promoção, marca preferida, tamanho..."></textarea>
+
+                <button type="submit">Adicionar item</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>📋 Itens cadastrados</h2>
+
+            {% if lista_compras %}
+                {% for item in lista_compras %}
+                <div class="item-box">
+                    <p><strong>Item:</strong> {{ item["item"] }}</p>
+                    <p><strong>Quantidade:</strong> {{ item["quantidade"] }}</p>
+                    <p><strong>Categoria:</strong> {{ item["categoria"] }}</p>
+                    <p><strong>Status:</strong> 
+                        <span class="{% if item['status'] == 'Concluído' %}status-ok{% else %}status-pendente{% endif %}">
+                            {{ item["status"] }}
+                        </span>
+                    </p>
+                    <p><strong>Observações:</strong> {{ item["observacoes"] if item["observacoes"] else "Sem observações" }}</p>
+
+                    <div class="acoes">
+                        <a class="btn-editar" href="{{ url_for('editar_compra', id=item['id']) }}">Editar</a>
+                        <a class="btn-ok" href="{{ url_for('concluir_compra', id=item['id']) }}">Concluir</a>
+                        <a class="btn-excluir" href="{{ url_for('excluir_compra', id=item['id']) }}"
+                           onclick="return confirm('Deseja excluir este item?')">Excluir</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="vazio">Nenhum item cadastrado ainda.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        {% if secao == 'agenda' %}
+        <section class="card">
+            <h2>📅 Agenda de Compromissos</h2>
+
+            <form action="{{ url_for('adicionar_agenda') }}" method="POST">
+                <label>Título</label>
+                <input type="text" name="titulo" placeholder="Ex: Consulta médica" required>
+
+                <label>Data</label>
+                <input type="date" name="data" required>
+
+                <label>Horário</label>
+                <input type="time" name="horario" required>
+
+                <label>Observações</label>
+                <textarea name="observacoes" rows="3" placeholder="Ex: levar documentos, chegar antes..."></textarea>
+
+                <button type="submit">Salvar compromisso</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>🗓️ Compromissos</h2>
+
+            {% if lista_agenda %}
+                {% for evento in lista_agenda %}
+                <div class="item-box">
+                    <p><strong>Título:</strong> {{ evento["titulo"] }}</p>
+                    <p><strong>Data:</strong> {{ evento["data"] }}</p>
+                    <p><strong>Horário:</strong> {{ evento["horario"] }}</p>
+                    <p><strong>Observações:</strong> {{ evento["observacoes"] if evento["observacoes"] else "Sem observações" }}</p>
+
+                    <div class="acoes">
+                        <a class="btn-editar" href="{{ url_for('editar_agenda', id=evento['id']) }}">Editar</a>
+                        <a class="btn-excluir" href="{{ url_for('excluir_agenda', id=evento['id']) }}"
+                           onclick="return confirm('Deseja excluir este compromisso?')">Excluir</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="vazio">Nenhum compromisso cadastrado ainda.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        {% if secao == 'ciclo' %}
+        <section class="card">
+            <h2>🌷 Calendário Menstrual</h2>
+
+            <form action="{{ url_for('adicionar_ciclo') }}" method="POST">
+                <label>Última menstruação</label>
+                <input type="date" name="ultima_menstruacao" required>
+
+                <label>Duração do ciclo</label>
+                <input type="number" name="duracao_ciclo" value="28" required>
+
+                <label>Duração do fluxo</label>
+                <input type="number" name="duracao_fluxo" value="5" required>
+
+                <label>Observações</label>
+                <textarea name="observacoes" rows="4" placeholder="Ex: cólica, humor, dor de cabeça..."></textarea>
+
+                <button type="submit">Salvar dados</button>
+            </form>
+        </section>
+
+        {% if ultimo_ciclo %}
+        <section class="card destaque">
+            <h2>💖 Última previsão</h2>
+            <p><strong>Próxima menstruação:</strong> {{ ultimo_ciclo["proxima_menstruacao"] }}</p>
+            <p><strong>Período fértil:</strong> {{ ultimo_ciclo["periodo_fertil_inicio"] }} até {{ ultimo_ciclo["periodo_fertil_fim"] }}</p>
+            <p><strong>Observações:</strong> {{ ultimo_ciclo["observacoes"] if ultimo_ciclo["observacoes"] else "Sem observações" }}</p>
+        </section>
+        {% endif %}
+
+        <section class="card">
+            <h2>📚 Histórico do ciclo</h2>
+
+            {% if lista_ciclos %}
+                {% for ciclo in lista_ciclos %}
+                <div class="item-box">
+                    <p><strong>Última menstruação:</strong> {{ ciclo["ultima_menstruacao"] }}</p>
+                    <p><strong>Duração do ciclo:</strong> {{ ciclo["duracao_ciclo"] }} dias</p>
+                    <p><strong>Duração do fluxo:</strong> {{ ciclo["duracao_fluxo"] }} dias</p>
+                    <p><strong>Próxima menstruação:</strong> {{ ciclo["proxima_menstruacao"] }}</p>
+                    <p><strong>Período fértil:</strong> {{ ciclo["periodo_fertil_inicio"] }} até {{ ciclo["periodo_fertil_fim"] }}</p>
+                    <p><strong>Observações:</strong> {{ ciclo["observacoes"] if ciclo["observacoes"] else "Sem observações" }}</p>
+
+                    <div class="acoes">
+                        <a class="btn-editar" href="{{ url_for('editar_ciclo', id=ciclo['id']) }}">Editar</a>
+                        <a class="btn-excluir" href="{{ url_for('excluir_ciclo', id=ciclo['id']) }}"
+                           onclick="return confirm('Deseja excluir este registro?')">Excluir</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="vazio">Nenhum ciclo cadastrado ainda.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+    </div>
+
+</body>
+</html>
