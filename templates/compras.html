@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="card">
+    <h2>Lista de Compras</h2>
+
+    <form method="POST">
+        <input type="text" name="item" placeholder="Nome do item" required>
+        <input type="text" name="quantidade" placeholder="Quantidade">
+        <button type="submit">Adicionar item</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Seus itens</h2>
+
+    {% if lista_compras %}
+        {% for item in lista_compras %}
+            <div class="linha-item">
+                <div>
+                    <strong>{{ item['item'] }}</strong>
+                    {% if item['quantidade'] %}
+                        <span> - {{ item['quantidade'] }}</span>
+                    {% endif %}
+                </div>
+
+                <a class="link-excluir" href="{{ url_for('excluir_compra', item_id=item['id']) }}">Excluir</a>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Nenhum item cadastrado ainda.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<h1 class="titulo-pagina">Bem-vinda, {{ session['usuario_nome'] }} 💖</h1>
+
+<div class="cards-grid">
+    <div class="mini-card">
+        <h3>🛒 Compras</h3>
+        <p>{{ total_compras }} itens cadastrados</p>
+    </div>
+
+    <div class="mini-card">
+        <h3>📅 Agenda</h3>
+        <p>{{ total_agenda }} compromissos</p>
+    </div>
+
+    <div class="mini-card">
+        <h3>🌙 Ciclo</h3>
+        <p>{{ total_ciclo }} registros</p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Previsão do próximo ciclo</h2>
+
+    {% if previsao %}
+        <div class="cards-grid">
+            <div class="mini-card">
+                <h3>Próxima menstruação</h3>
+                <p>{{ previsao.proxima_menstruacao }}</p>
+            </div>
+
+            <div class="mini-card">
+                <h3>Ovulação estimada</h3>
+                <p>{{ previsao.ovulacao }}</p>
+            </div>
+
+            <div class="mini-card">
+                <h3>Período fértil</h3>
+                <p>{{ previsao.fertil_inicio }} até {{ previsao.fertil_fim }}</p>
+            </div>
+        </div>
+    {% else %}
+        <p>Cadastre um ciclo para ver a previsão.</p>
+    {% endif %}
+</div>
+{% endblock %}

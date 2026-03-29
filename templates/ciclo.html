@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="card">
+    <h2>Calendário Menstrual</h2>
+
+    <form method="POST">
+        <input type="date" name="data_inicio" required>
+        <input type="number" name="duracao_ciclo" placeholder="Duração média do ciclo (ex: 28)" min="20" max="40">
+        <textarea name="observacoes" placeholder="Observações"></textarea>
+        <button type="submit">Salvar registro</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Seus registros</h2>
+
+    {% if registros %}
+        {% for r in registros %}
+            <div class="linha-item-coluna">
+                <p><strong>Data de início:</strong> {{ r.data_inicio }}</p>
+                <p><strong>Duração média:</strong> {{ r.duracao_ciclo }} dias</p>
+                <p><strong>Próxima menstruação:</strong> {{ r.proxima_menstruacao }}</p>
+                <p><strong>Ovulação estimada:</strong> {{ r.ovulacao }}</p>
+                <p><strong>Período fértil:</strong> {{ r.fertil_inicio }} até {{ r.fertil_fim }}</p>
+
+                {% if r.observacoes %}
+                    <p><strong>Observações:</strong> {{ r.observacoes }}</p>
+                {% endif %}
+
+                <div>
+                    <a class="link-excluir" href="{{ url_for('excluir_ciclo', ciclo_id=r.id) }}">Excluir</a>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Nenhum registro cadastrado ainda.</p>
+    {% endif %}
+</div>
+{% endblock %}

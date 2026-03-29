@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<div class="card form-card">
+    <h2>Criar conta</h2>
+
+    <form method="POST">
+        <input type="text" name="nome" placeholder="Seu nome" required>
+        <input type="email" name="email" placeholder="Seu e-mail" required>
+        <input type="password" name="senha" placeholder="Crie sua senha" required>
+        <button type="submit">Cadastrar</button>
+    </form>
+</div>
+{% endblock %}

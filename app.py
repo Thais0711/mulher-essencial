@@ -1,299 +1,399 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+import sqlite3
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
-from banco import conectar, criar_tabelas
 
 app = Flask(__name__)
-criar_tabelas()
+app.secret_key = "mulher_essencial_chave_secreta_2026"
+
+DB_NAME = "mulher_essencial.db"
 
 
-def calcular_ciclo(data_ultima_menstruacao, duracao_ciclo):
-    data_base = datetime.strptime(data_ultima_menstruacao, "%Y-%m-%d")
+def conectar():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-    proxima_menstruacao = data_base + timedelta(days=duracao_ciclo)
 
+def criar_tabelas():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            senha TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS compras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            quantidade TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agenda (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            titulo TEXT NOT NULL,
+            data TEXT NOT NULL,
+            hora TEXT,
+            descricao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ciclo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            data_inicio TEXT NOT NULL,
+            duracao_ciclo INTEGER NOT NULL DEFAULT 28,
+            observacoes TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def atualizar_tabela_ciclo():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("PRAGMA table_info(ciclo)")
+    colunas = [col["name"] for col in cursor.fetchall()]
+
+    if "duracao_ciclo" not in colunas:
+        cursor.execute("ALTER TABLE ciclo ADD COLUMN duracao_ciclo INTEGER NOT NULL DEFAULT 28")
+        conn.commit()
+
+    conn.close()
+
+
+def login_obrigatorio(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if "usuario_id" not in session:
+            flash("Faça login para continuar.", "erro")
+            return redirect(url_for("login"))
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def calcular_previsao_ciclo(data_inicio_str, duracao_ciclo):
+    data_inicio = datetime.strptime(data_inicio_str, "%Y-%m-%d").date()
+
+    proxima_menstruacao = data_inicio + timedelta(days=duracao_ciclo)
     ovulacao = proxima_menstruacao - timedelta(days=14)
-    fertil_inicio = ovulacao - timedelta(days=3)
-    fertil_fim = ovulacao + timedelta(days=2)
+    fertil_inicio = ovulacao - timedelta(days=5)
+    fertil_fim = ovulacao + timedelta(days=1)
 
     return {
         "proxima_menstruacao": proxima_menstruacao.strftime("%d/%m/%Y"),
-        "periodo_fertil_inicio": fertil_inicio.strftime("%d/%m/%Y"),
-        "periodo_fertil_fim": fertil_fim.strftime("%d/%m/%Y")
+        "ovulacao": ovulacao.strftime("%d/%m/%Y"),
+        "fertil_inicio": fertil_inicio.strftime("%d/%m/%Y"),
+        "fertil_fim": fertil_fim.strftime("%d/%m/%Y")
     }
 
 
+criar_tabelas()
+atualizar_tabela_ciclo()
+
+
 @app.route("/")
-def home():
-    return redirect(url_for("painel", secao="dashboard"))
+def index():
+    if "usuario_id" in session:
+        return redirect(url_for("dashboard"))
+    return render_template("index.html")
 
 
-@app.route("/painel")
-def painel():
-    secao = request.args.get("secao", "dashboard")
+@app.route("/cadastro", methods=["GET", "POST"])
+def cadastro():
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        senha = request.form.get("senha", "").strip()
+
+        if not nome or not email or not senha:
+            flash("Preencha todos os campos.", "erro")
+            return render_template("cadastro.html")
+
+        senha_hash = generate_password_hash(senha)
+
+        try:
+            conn = conectar()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                (nome, email, senha_hash)
+            )
+            conn.commit()
+            conn.close()
+
+            flash("Cadastro realizado com sucesso. Faça login.", "sucesso")
+            return redirect(url_for("login"))
+
+        except sqlite3.IntegrityError:
+            flash("Este e-mail já está cadastrado.", "erro")
+
+    return render_template("cadastro.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        senha = request.form.get("senha", "").strip()
+
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM usuarios WHERE email = ?", (email,))
+        usuario = cursor.fetchone()
+        conn.close()
+
+        if usuario and check_password_hash(usuario["senha"], senha):
+            session["usuario_id"] = usuario["id"]
+            session["usuario_nome"] = usuario["nome"]
+            flash("Login realizado com sucesso.", "sucesso")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("E-mail ou senha inválidos.", "erro")
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Você saiu da sua conta.", "sucesso")
+    return redirect(url_for("index"))
+
+
+@app.route("/dashboard")
+@login_obrigatorio
+def dashboard():
+    usuario_id = session["usuario_id"]
 
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM compras ORDER BY id DESC")
-    lista_compras = cursor.fetchall()
+    cursor.execute("SELECT COUNT(*) AS total FROM compras WHERE usuario_id = ?", (usuario_id,))
+    total_compras = cursor.fetchone()["total"]
 
-    cursor.execute("SELECT * FROM agenda ORDER BY data ASC, horario ASC")
-    lista_agenda = cursor.fetchall()
+    cursor.execute("SELECT COUNT(*) AS total FROM agenda WHERE usuario_id = ?", (usuario_id,))
+    total_agenda = cursor.fetchone()["total"]
 
-    cursor.execute("SELECT * FROM ciclos ORDER BY id DESC")
-    lista_ciclos = cursor.fetchall()
+    cursor.execute("SELECT COUNT(*) AS total FROM ciclo WHERE usuario_id = ?", (usuario_id,))
+    total_ciclo = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT * FROM ciclo
+        WHERE usuario_id = ?
+        ORDER BY data_inicio DESC, id DESC
+        LIMIT 1
+    """, (usuario_id,))
+    ultimo_ciclo = cursor.fetchone()
+
+    previsao = None
+    if ultimo_ciclo:
+        previsao = calcular_previsao_ciclo(
+            ultimo_ciclo["data_inicio"],
+            ultimo_ciclo["duracao_ciclo"]
+        )
 
     conn.close()
 
-    total_compras = len(lista_compras)
-    compras_concluidas = len([item for item in lista_compras if item["status"] == "Concluído"])
-    total_agenda = len(lista_agenda)
-    total_ciclos = len(lista_ciclos)
-
-    ultimo_ciclo = lista_ciclos[0] if lista_ciclos else None
-
     return render_template(
-        "index.html",
-        secao=secao,
-        lista_compras=lista_compras,
-        lista_agenda=lista_agenda,
-        lista_ciclos=lista_ciclos,
-        ultimo_ciclo=ultimo_ciclo,
+        "dashboard.html",
         total_compras=total_compras,
-        compras_concluidas=compras_concluidas,
         total_agenda=total_agenda,
-        total_ciclos=total_ciclos
+        total_ciclo=total_ciclo,
+        previsao=previsao
     )
 
 
-@app.route("/adicionar_compra", methods=["POST"])
-def adicionar_compra():
-    item = request.form["item"]
-    quantidade = request.form["quantidade"]
-    categoria = request.form["categoria"]
-    observacoes = request.form["observacoes"]
-
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO compras (item, quantidade, categoria, observacoes, status)
-        VALUES (?, ?, ?, ?, ?)
-    """, (item, quantidade, categoria, observacoes, "Pendente"))
-
-    conn.commit()
-    conn.close()
-
-    return redirect(url_for("painel", secao="compras"))
-
-
-@app.route("/concluir_compra/<int:id>")
-def concluir_compra(id):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("UPDATE compras SET status = 'Concluído' WHERE id = ?", (id,))
-
-    conn.commit()
-    conn.close()
-
-    return redirect(url_for("painel", secao="compras"))
-
-
-@app.route("/excluir_compra/<int:id>")
-def excluir_compra(id):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM compras WHERE id = ?", (id,))
-
-    conn.commit()
-    conn.close()
-
-    return redirect(url_for("painel", secao="compras"))
-
-
-@app.route("/editar_compra/<int:id>", methods=["GET", "POST"])
-def editar_compra(id):
+@app.route("/compras", methods=["GET", "POST"])
+@login_obrigatorio
+def compras():
+    usuario_id = session["usuario_id"]
     conn = conectar()
     cursor = conn.cursor()
 
     if request.method == "POST":
-        item = request.form["item"]
-        quantidade = request.form["quantidade"]
-        categoria = request.form["categoria"]
-        observacoes = request.form["observacoes"]
+        item = request.form.get("item", "").strip()
+        quantidade = request.form.get("quantidade", "").strip()
 
-        cursor.execute("""
-            UPDATE compras
-            SET item = ?, quantidade = ?, categoria = ?, observacoes = ?
-            WHERE id = ?
-        """, (item, quantidade, categoria, observacoes, id))
+        if item:
+            cursor.execute(
+                "INSERT INTO compras (usuario_id, item, quantidade) VALUES (?, ?, ?)",
+                (usuario_id, item, quantidade)
+            )
+            conn.commit()
+            flash("Item adicionado com sucesso.", "sucesso")
+        else:
+            flash("Informe o nome do item.", "erro")
 
-        conn.commit()
-        conn.close()
-        return redirect(url_for("painel", secao="compras"))
-
-    cursor.execute("SELECT * FROM compras WHERE id = ?", (id,))
-    registro = cursor.fetchone()
+    cursor.execute(
+        "SELECT * FROM compras WHERE usuario_id = ? ORDER BY id DESC",
+        (usuario_id,)
+    )
+    lista_compras = cursor.fetchall()
     conn.close()
 
-    return render_template("editar.html", tipo="compra", registro=registro)
+    return render_template("compras.html", lista_compras=lista_compras)
 
 
-@app.route("/adicionar_agenda", methods=["POST"])
-def adicionar_agenda():
-    titulo = request.form["titulo"]
-    data = request.form["data"]
-    horario = request.form["horario"]
-    observacoes = request.form["observacoes"]
+@app.route("/excluir_compra/<int:item_id>")
+@login_obrigatorio
+def excluir_compra(item_id):
+    usuario_id = session["usuario_id"]
 
     conn = conectar()
     cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO agenda (titulo, data, horario, observacoes)
-        VALUES (?, ?, ?, ?)
-    """, (titulo, data, horario, observacoes))
-
+    cursor.execute(
+        "DELETE FROM compras WHERE id = ? AND usuario_id = ?",
+        (item_id, usuario_id)
+    )
     conn.commit()
     conn.close()
 
-    return redirect(url_for("painel", secao="agenda"))
+    flash("Item removido com sucesso.", "sucesso")
+    return redirect(url_for("compras"))
 
 
-@app.route("/excluir_agenda/<int:id>")
-def excluir_agenda(id):
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM agenda WHERE id = ?", (id,))
-
-    conn.commit()
-    conn.close()
-
-    return redirect(url_for("painel", secao="agenda"))
-
-
-@app.route("/editar_agenda/<int:id>", methods=["GET", "POST"])
-def editar_agenda(id):
+@app.route("/agenda", methods=["GET", "POST"])
+@login_obrigatorio
+def agenda():
+    usuario_id = session["usuario_id"]
     conn = conectar()
     cursor = conn.cursor()
 
     if request.method == "POST":
-        titulo = request.form["titulo"]
-        data = request.form["data"]
-        horario = request.form["horario"]
-        observacoes = request.form["observacoes"]
+        titulo = request.form.get("titulo", "").strip()
+        data = request.form.get("data", "").strip()
+        hora = request.form.get("hora", "").strip()
+        descricao = request.form.get("descricao", "").strip()
 
-        cursor.execute("""
-            UPDATE agenda
-            SET titulo = ?, data = ?, horario = ?, observacoes = ?
-            WHERE id = ?
-        """, (titulo, data, horario, observacoes, id))
-
-        conn.commit()
-        conn.close()
-        return redirect(url_for("painel", secao="agenda"))
-
-    cursor.execute("SELECT * FROM agenda WHERE id = ?", (id,))
-    registro = cursor.fetchone()
-    conn.close()
-
-    return render_template("editar.html", tipo="agenda", registro=registro)
-
-
-@app.route("/adicionar_ciclo", methods=["POST"])
-def adicionar_ciclo():
-    ultima_menstruacao = request.form["ultima_menstruacao"]
-    duracao_ciclo = int(request.form["duracao_ciclo"])
-    duracao_fluxo = int(request.form["duracao_fluxo"])
-    observacoes = request.form["observacoes"]
-
-    datas = calcular_ciclo(ultima_menstruacao, duracao_ciclo)
-
-    conn = conectar()
-    cursor = conn.cursor()
+        if titulo and data:
+            cursor.execute("""
+                INSERT INTO agenda (usuario_id, titulo, data, hora, descricao)
+                VALUES (?, ?, ?, ?, ?)
+            """, (usuario_id, titulo, data, hora, descricao))
+            conn.commit()
+            flash("Compromisso salvo com sucesso.", "sucesso")
+        else:
+            flash("Preencha pelo menos título e data.", "erro")
 
     cursor.execute("""
-        INSERT INTO ciclos (
-            ultima_menstruacao,
-            duracao_ciclo,
-            duracao_fluxo,
-            observacoes,
-            proxima_menstruacao,
-            periodo_fertil_inicio,
-            periodo_fertil_fim
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        ultima_menstruacao,
-        duracao_ciclo,
-        duracao_fluxo,
-        observacoes,
-        datas["proxima_menstruacao"],
-        datas["periodo_fertil_inicio"],
-        datas["periodo_fertil_fim"]
-    ))
-
-    conn.commit()
+        SELECT * FROM agenda
+        WHERE usuario_id = ?
+        ORDER BY data ASC, hora ASC, id DESC
+    """, (usuario_id,))
+    compromissos = cursor.fetchall()
     conn.close()
 
-    return redirect(url_for("painel", secao="ciclo"))
+    return render_template("agenda.html", compromissos=compromissos)
 
 
-@app.route("/excluir_ciclo/<int:id>")
-def excluir_ciclo(id):
+@app.route("/excluir_agenda/<int:agenda_id>")
+@login_obrigatorio
+def excluir_agenda(agenda_id):
+    usuario_id = session["usuario_id"]
+
     conn = conectar()
     cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM ciclos WHERE id = ?", (id,))
-
+    cursor.execute(
+        "DELETE FROM agenda WHERE id = ? AND usuario_id = ?",
+        (agenda_id, usuario_id)
+    )
     conn.commit()
     conn.close()
 
-    return redirect(url_for("painel", secao="ciclo"))
+    flash("Compromisso excluído com sucesso.", "sucesso")
+    return redirect(url_for("agenda"))
 
 
-@app.route("/editar_ciclo/<int:id>", methods=["GET", "POST"])
-def editar_ciclo(id):
+@app.route("/ciclo", methods=["GET", "POST"])
+@login_obrigatorio
+def ciclo():
+    usuario_id = session["usuario_id"]
     conn = conectar()
     cursor = conn.cursor()
 
     if request.method == "POST":
-        ultima_menstruacao = request.form["ultima_menstruacao"]
-        duracao_ciclo = int(request.form["duracao_ciclo"])
-        duracao_fluxo = int(request.form["duracao_fluxo"])
-        observacoes = request.form["observacoes"]
+        data_inicio = request.form.get("data_inicio", "").strip()
+        duracao_ciclo = request.form.get("duracao_ciclo", "").strip()
+        observacoes = request.form.get("observacoes", "").strip()
 
-        datas = calcular_ciclo(ultima_menstruacao, duracao_ciclo)
+        if not data_inicio:
+            flash("Informe a data de início.", "erro")
+        else:
+            try:
+                duracao_ciclo = int(duracao_ciclo) if duracao_ciclo else 28
 
-        cursor.execute("""
-            UPDATE ciclos
-            SET ultima_menstruacao = ?, duracao_ciclo = ?, duracao_fluxo = ?,
-                observacoes = ?, proxima_menstruacao = ?, periodo_fertil_inicio = ?,
-                periodo_fertil_fim = ?
-            WHERE id = ?
-        """, (
-            ultima_menstruacao,
-            duracao_ciclo,
-            duracao_fluxo,
-            observacoes,
-            datas["proxima_menstruacao"],
-            datas["periodo_fertil_inicio"],
-            datas["periodo_fertil_fim"],
-            id
-        ))
+                cursor.execute("""
+                    INSERT INTO ciclo (usuario_id, data_inicio, duracao_ciclo, observacoes)
+                    VALUES (?, ?, ?, ?)
+                """, (usuario_id, data_inicio, duracao_ciclo, observacoes))
+                conn.commit()
+                flash("Registro do ciclo salvo com sucesso.", "sucesso")
+            except ValueError:
+                flash("A duração do ciclo precisa ser um número.", "erro")
 
-        conn.commit()
-        conn.close()
-        return redirect(url_for("painel", secao="ciclo"))
-
-    cursor.execute("SELECT * FROM ciclos WHERE id = ?", (id,))
-    registro = cursor.fetchone()
+    cursor.execute("""
+        SELECT * FROM ciclo
+        WHERE usuario_id = ?
+        ORDER BY data_inicio DESC, id DESC
+    """, (usuario_id,))
+    registros = cursor.fetchall()
     conn.close()
 
-    return render_template("editar.html", tipo="ciclo", registro=registro)
+    registros_com_previsao = []
+    for r in registros:
+        previsao = calcular_previsao_ciclo(r["data_inicio"], r["duracao_ciclo"])
+        registros_com_previsao.append({
+            "id": r["id"],
+            "data_inicio": r["data_inicio"],
+            "duracao_ciclo": r["duracao_ciclo"],
+            "observacoes": r["observacoes"],
+            "proxima_menstruacao": previsao["proxima_menstruacao"],
+            "ovulacao": previsao["ovulacao"],
+            "fertil_inicio": previsao["fertil_inicio"],
+            "fertil_fim": previsao["fertil_fim"]
+        })
+
+    return render_template("ciclo.html", registros=registros_com_previsao)
+
+
+@app.route("/excluir_ciclo/<int:ciclo_id>")
+@login_obrigatorio
+def excluir_ciclo(ciclo_id):
+    usuario_id = session["usuario_id"]
+
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM ciclo WHERE id = ? AND usuario_id = ?",
+        (ciclo_id, usuario_id)
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Registro excluído com sucesso.", "sucesso")
+    return redirect(url_for("ciclo"))
 
 
 if __name__ == "__main__":
