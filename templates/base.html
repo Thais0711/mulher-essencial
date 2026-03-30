@@ -1,40 +1,43 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mulher Essencial</title>
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#a0002e">
 </head>
 <body>
-    <header class="topo">
-        <div class="logo">🌸 Mulher Essencial</div>
 
-        <nav>
-            {% if session.get('usuario_id') %}
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('compras') }}">Compras</a>
-                <a href="{{ url_for('agenda') }}">Agenda</a>
-                <a href="{{ url_for('ciclo') }}">Ciclo</a>
-                <a href="{{ url_for('logout') }}">Sair</a>
-            {% else %}
-                <a href="{{ url_for('index') }}">Início</a>
-                <a href="{{ url_for('login') }}">Login</a>
-                <a href="{{ url_for('cadastro') }}">Cadastro</a>
-            {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <header class="topo">
+        <div class="logo">💖 Mulher Essencial</div>
+
+        <nav class="menu">
+            <a href="{{ url_for('index') }}">Início</a>
+            <a href="{{ url_for('cadastro') }}">Cadastro</a>
+            <a href="{{ url_for('login') }}">Entrar</a>
         </nav>
     </header>
 
     <main class="container">
-        {% with mensagens = get_flashed_messages(with_categories=true) %}
-            {% if mensagens %}
-                {% for categoria, mensagem in mensagens %}
-                    <div class="flash {{ categoria }}">{{ mensagem }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {% block conteudo %}{% endblock %}
+        {% block content %}{% endblock %}
     </main>
+
+    <footer class="rodape">
+        © 2026 Mulher Essencial ✨
+    </footer>
+
 </body>
 </html>

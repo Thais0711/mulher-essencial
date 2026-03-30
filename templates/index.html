@@ -1,13 +1,30 @@
 {% extends "base.html" %}
 
-{% block conteudo %}
+{% block content %}
 <section class="hero">
-    <h1>Seu app 3 em 1 para o dia a dia</h1>
+    <h1>Seu app 3 em 1 para o dia a dia ❤️</h1>
     <p>Agenda, lista de compras e calendário menstrual em um só lugar.</p>
 
     <div class="acoes">
         <a href="{{ url_for('cadastro') }}" class="btn">Criar conta</a>
         <a href="{{ url_for('login') }}" class="btn btn-secundario">Entrar</a>
+    </div>
+</section>
+
+<section class="cards">
+    <div class="card">
+        <h2>📅 Agenda</h2>
+        <p>Organize seus compromissos de forma simples e rápida.</p>
+    </div>
+
+    <div class="card">
+        <h2>🛒 Compras</h2>
+        <p>Monte sua lista de compras e acompanhe tudo com facilidade.</p>
+    </div>
+
+    <div class="card">
+        <h2>🌸 Ciclo Menstrual</h2>
+        <p>Registre datas importantes e acompanhe seu ciclo.</p>
     </div>
 </section>
 {% endblock %}
